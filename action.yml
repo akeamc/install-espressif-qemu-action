@@ -1,0 +1,57 @@
+name: Install espressif/qemu
+description: Install Espressif's fork of QEMU, qemu-system-xtensa
+runs:
+  using: "composite"
+  steps:
+    - name: Check Runner OS
+      if: ${{ runner.os != 'Linux' }}
+      shell: bash
+      run: |
+        echo "::error title=⛔ error hint::Support Linux Only"
+        exit 1
+
+    - name: Install apt packages
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ninja-build flex bison gperf python3-pip python3-setuptools python3-venv cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0 libglib2.0-dev libpixman-1-dev libgcrypt20-dev libslirp-dev clang
+
+    - name: Get latest espressif/qemu commit hash
+      shell: bash
+      run: echo "QEMU_COMMIT=$(git ls-remote https://github.com/espressif/qemu.git | head -1 | cut -f 1)" >> $GITHUB_ENV
+
+    - name: Restore qemu cache
+      id: cache-qemu-restore
+      uses: actions/cache/restore@v4
+      with:
+        path: /usr/local/bin/qemu-system-xtensa
+        key: ${{ runner.os }}-qemu-${{ env.QEMU_COMMIT }}
+
+    - name: Clone espressif/qemu
+      if: steps.cache-qemu-restore.outputs.cache-hit != 'true'
+      shell: bash
+      run: git clone --depth 1 https://github.com/espressif/qemu.git
+
+    # - name: Clone qemu
+    #   uses: actions/checkout@v4
+    #   with:
+    #     repository: espressif/qemu
+    #     path: qemu
+
+    - name: Install qemu-system-xtensa
+      if: steps.cache-qemu-restore.outputs.cache-hit != 'true'
+      working-directory: qemu
+      shell: bash
+      run: |
+        mkdir -p build \
+        && cd build \
+        && ../configure --target-list=xtensa-softmmu --without-default-features --enable-slirp  --enable-gcrypt \
+        && make -j $(nproc) vga=no \
+        && make install
+
+    - name: Save qemu cache
+      uses: actions/cache/save@v4
+      if: steps.cache-qemu-restore.outputs.cache-hit != 'true'
+      with:
+        path: /usr/local/bin/qemu-system-xtensa
+        key: ${{ runner.os }}-qemu-${{ env.QEMU_COMMIT }}
